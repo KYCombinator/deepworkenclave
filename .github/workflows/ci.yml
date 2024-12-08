@@ -1,0 +1,238 @@
+name: Build
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read # This is required for actions/checkout
+on: push
+jobs:
+  check_files:
+    name: check files
+    outputs:
+      files_srv_changes: ${{ steps.files_srv_changes.outputs.files_srv_changes }}
+      files_src_changes: ${{ steps.files_src_changes.outputs.files_src_changes }}
+      files_api_changes: ${{ steps.files_api_changes.outputs.files_api_changes }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+
+      - name: Check for changes in api folder
+        id: files_api_changes
+        run: |
+          changes=$(git diff --name-only HEAD^ HEAD | grep "^api/" || true)
+          if [ -n "$changes" ]; then
+            echo "Files changed outside of the api directory:"
+            echo "$changes"
+            echo "files_api_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected outside of the serapiver directory."
+            echo "files_api_changes=false" >> $GITHUB_OUTPUT
+            fi
+
+      - name: Check for changes in server directory
+        id: files_srv_changes
+        run: |
+          changes=$(git diff --name-only HEAD^ HEAD | grep "^srv/" || true)
+          if [ -n "$changes" ]; then
+            echo "Files changed in server directory or its subdirectories:"
+            echo "$changes"
+            echo "files_srv_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected in server directory or its subdirectories."
+            echo "files_srv_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for changes excluding server directory
+        id: files_src_changes
+        run: |
+          changes=$(git diff --name-only HEAD^ HEAD | grep -v "^srv/" || true)
+          if [ -n "$changes" ]; then
+            echo "Files changed outside of the server directory:"
+            echo "$changes"
+            echo "files_src_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected outside of the server directory."
+            echo "files_src_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+  api_key:
+    name: build api files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: check_files
+    if: always() && needs.check_files.outputs.files_api_changes == 'true'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Map Branch to DEPLOYMENT
+        id: check_branch
+        run: |
+          chmod +x .github/scripts/branchToDeployment.sh
+          .github/scripts/branchToDeployment.sh
+
+      - name: Build SAM API
+        run: sam build --use-container
+        working-directory: ./api/
+
+      - name: Deploy SAM API
+        run: |
+          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-API" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+            DEPLOYMENT=$DEPLOYMENT
+        working-directory: ./api/
+
+  nextjs:
+    name: build src files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [api_key]
+    if: always() && needs.check_files.outputs.files_src_changes == 'true'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20" # Specify the Node.js version here
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Map Branch to DEPLOYMENT
+        id: check_branch
+        run: |
+          chmod +x .github/scripts/branchToDeployment.sh
+          .github/scripts/branchToDeployment.sh
+
+      - name: Map DEPLOYMENT to DEVORPRD
+        run: |
+          echo "DEVORPRD=$(if [[ $DEPLOYMENT = PRD ]]; 
+            then echo "PRD"; 
+          else
+            echo "DEV"; fi)" >> $GITHUB_ENV
+
+      - name: Map Branch to Domain ENV VAR
+        run: |
+          echo "DOMAIN=$(if [[ $DEPLOYMENT = PRD ]]; 
+            then echo "www.vacavoya.com"; 
+          else
+            echo "${DEPLOYMENT,,}.vacavoya.com"; fi)" >> $GITHUB_ENV
+
+      - name: Prepare Deployment Variable
+        run: echo "DEPLOYMENT_FIXED=${DEPLOYMENT//-/_}" >> $GITHUB_ENV
+
+      - name: Install Source
+        run: |
+          npm install
+
+      - name: Prepare Deployment Variable
+        run: echo "DEPLOYMENT_FIXED=${DEPLOYMENT//-/_}" >> $GITHUB_ENV
+
+      - name: Build Source
+        run: |
+          npm run build
+        env:
+          NEXT_PUBLIC_BASE_URL: ${{ env.DOMAIN }}
+          NEXT_PUBLIC_API_KEY: ${{ env.API_KEY_VALUE }}
+
+      - name: Build SAM
+        run: sam build --use-container --cached --beta-features --skip-pull-image
+
+      - name: Deploy SAM
+        run: |
+          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-SRC" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+            DEPLOYMENT=${DEPLOYMENT,,}
+
+      - name: Empty Bucket
+        run: |
+          aws s3 rm s3://${DOMAIN}-src --recursive
+
+      - name: Copy Static Files
+        run: |
+          aws s3 cp .next/static/ s3://${DOMAIN}-src/_next/static --recursive
+          aws s3 cp public/images/ s3://${DOMAIN}-src/images --recursive
+
+  server:
+    name: build server files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [nextjs]
+    if: always() && needs.check_files.outputs.files_srv_changes == 'true'
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Map Branch to DEPLOYMENT
+        id: check_branch
+        run: |
+          chmod +x .github/scripts/branchToDeployment.sh
+          .github/scripts/branchToDeployment.sh
+
+      - name: Map DEPLOYMENT to DEVORPRD
+        run: |
+          echo "DEVORPRD=$(if [[ $DEPLOYMENT = PRD ]]; 
+            then echo "PRD"; 
+          else
+            echo "DEV"; fi)" >> $GITHUB_ENV
+
+      - name: Map Branch to Domain ENV VAR
+        run: |
+          echo "DOMAIN=$(if [[ $DEPLOYMENT = PRD ]]; 
+            then echo "www.vacavoya.com"; 
+          else
+            echo "${DEPLOYMENT,,}.vacavoya.com"; fi)" >> $GITHUB_ENV
+
+      - name: Get NextAPI Output Key
+        run: |
+          NEXTAPI=$(aws cloudformation --region us-east-1 describe-stacks --stack-name ${DEPLOYMENT}-VACAVOYA-SRC --output text --query 'Stacks[0].Outputs[?OutputKey==`NextApi`].OutputValue')
+          echo "NEXTAPI=$NEXTAPI" >> $GITHUB_ENV
+
+      - name: Build SAM
+        run: sam build --use-container
+        working-directory: ./srv/
+
+      - name: Prepare Deployment Variable
+        run: echo "DEPLOYMENT_FIXED=${DEPLOYMENT//-/_}" >> $GITHUB_ENV
+
+      - name: Deploy SAM
+        run: |
+          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-SRV" --capabilities CAPABILITY_NAMED_IAM --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+            DEPLOYMENT=$DEPLOYMENT \
+            DOMAIN=$DOMAIN \
+            ACMCERTIFICATEARN=${{ secrets.ACM_CERTIFICATE_ARN }} \
+            NEXTAPI=$NEXTAPI 
+        working-directory: ./srv/
