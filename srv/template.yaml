@@ -39,7 +39,7 @@ Resources:
   NextBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: !Sub "${DOMAIN}-DWE-src"
+      BucketName: !Sub "${DOMAIN}-src"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -176,4 +176,3 @@ Resources:
           Condition:
             StringEquals:
               AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFront.Id}'
-              
