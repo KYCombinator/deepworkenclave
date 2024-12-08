@@ -176,3 +176,4 @@ Resources:
           Condition:
             StringEquals:
               AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFront.Id}'
+              
