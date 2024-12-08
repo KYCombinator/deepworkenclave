@@ -233,6 +233,6 @@ jobs:
           sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-SRV" --capabilities CAPABILITY_NAMED_IAM --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
             DEPLOYMENT=$DEPLOYMENT \
             DOMAIN=$DOMAIN \
-            ACMCERTIFICATEARN=${{ secrets.ACM_CERTIFICATE_ARN }} \
+            ACMCERTIFICATEARN=${{ secrets.DWE_ACM_CERTIFICATE_ARN }} \
             NEXTAPI=$NEXTAPI 
         working-directory: ./srv/
