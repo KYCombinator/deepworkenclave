@@ -79,10 +79,15 @@ export default function LearnMore() {
           </p>
         </section>
 
-        <section className="flex justify-center">
-          <Link href="/apply">
+        <section className="flex justify-center gap-4 md:flex-row flex-col items-center">
+          <Link href="https://kycombinator.typeform.com/2025racehorse">
             <Button className="text-xl px-12 py-4 bg-purple-700 hover:bg-purple-600 text-white">
-              Apply
+              Startup Application
+            </Button>
+          </Link>
+          <Link href="https://kycombinator.typeform.com/2025dwestallion">
+            <Button className="text-xl px-12 py-4 bg-purple-700 hover:bg-purple-600 text-white">
+              Stallion Application
             </Button>
           </Link>
         </section>
