@@ -91,7 +91,7 @@ jobs:
 
       - name: Deploy SAM API
         run: |
-          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-API" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+          sam deploy --stack-name "${DEPLOYMENT}-deepworkenclave-API" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
             DEPLOYMENT=$DEPLOYMENT
         working-directory: ./api/
 
@@ -137,9 +137,9 @@ jobs:
       - name: Map Branch to Domain ENV VAR
         run: |
           echo "DOMAIN=$(if [[ $DEPLOYMENT = PRD ]]; 
-            then echo "www.vacavoya.com"; 
+            then echo "www.deepworkenclave.com"; 
           else
-            echo "${DEPLOYMENT,,}.vacavoya.com"; fi)" >> $GITHUB_ENV
+            echo "${DEPLOYMENT,,}.deepworkenclave.com"; fi)" >> $GITHUB_ENV
 
       - name: Prepare Deployment Variable
         run: echo "DEPLOYMENT_FIXED=${DEPLOYMENT//-/_}" >> $GITHUB_ENV
@@ -163,7 +163,7 @@ jobs:
 
       - name: Deploy SAM
         run: |
-          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-SRC" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+          sam deploy --stack-name "${DEPLOYMENT}-deepworkenclave-SRC" --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
             DEPLOYMENT=${DEPLOYMENT,,}
 
       - name: Empty Bucket
@@ -212,13 +212,13 @@ jobs:
       - name: Map Branch to Domain ENV VAR
         run: |
           echo "DOMAIN=$(if [[ $DEPLOYMENT = PRD ]]; 
-            then echo "www.vacavoya.com"; 
+            then echo "www.deepworkenclave.com"; 
           else
-            echo "${DEPLOYMENT,,}.vacavoya.com"; fi)" >> $GITHUB_ENV
+            echo "${DEPLOYMENT,,}.deepworkenclave.com"; fi)" >> $GITHUB_ENV
 
       - name: Get NextAPI Output Key
         run: |
-          NEXTAPI=$(aws cloudformation --region us-east-1 describe-stacks --stack-name ${DEPLOYMENT}-VACAVOYA-SRC --output text --query 'Stacks[0].Outputs[?OutputKey==`NextApi`].OutputValue')
+          NEXTAPI=$(aws cloudformation --region us-east-1 describe-stacks --stack-name ${DEPLOYMENT}-deepworkenclave-SRC --output text --query 'Stacks[0].Outputs[?OutputKey==`NextApi`].OutputValue')
           echo "NEXTAPI=$NEXTAPI" >> $GITHUB_ENV
 
       - name: Build SAM
@@ -230,7 +230,7 @@ jobs:
 
       - name: Deploy SAM
         run: |
-          sam deploy --stack-name "${DEPLOYMENT}-VACAVOYA-SRV" --capabilities CAPABILITY_NAMED_IAM --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
+          sam deploy --stack-name "${DEPLOYMENT}-deepworkenclave-SRV" --capabilities CAPABILITY_NAMED_IAM --resolve-s3 --no-fail-on-empty-changeset --parameter-overrides \
             DEPLOYMENT=$DEPLOYMENT \
             DOMAIN=$DOMAIN \
             ACMCERTIFICATEARN=${{ secrets.DWE_ACM_CERTIFICATE_ARN }} \
