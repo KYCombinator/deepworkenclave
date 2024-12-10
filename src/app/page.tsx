@@ -1,9 +1,19 @@
 import Hero from '@/components/hero'
 
 export const metadata = {
+  title: 'KY Combinator',
+  description: '4 startups, free rent, free office space, free food, for 1 year. No equity, No debt, no strings attached.',
   openGraph: {
-    images: ['/images/DeepWorkEnclave1.jpg'],
+    title: 'KY Combinator',
     description: '4 startups, free rent, free office space, free food, for 1 year. No equity, No debt, no strings attached.',
+    images: [{
+      url: '/images/DeepWorkEnclave1.jpg',
+      width: 1200,
+      height: 630,
+      alt: 'KY Combinator'
+    }],
+    locale: 'en_US',
+    type: 'website',
   },
 }
 
